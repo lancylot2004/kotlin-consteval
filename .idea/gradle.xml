@@ -8,6 +8,9 @@
         <option name="modules">
           <set>
             <option value="$PROJECT_DIR$" />
+            <option value="$PROJECT_DIR$/consteval-compiler" />
+            <option value="$PROJECT_DIR$/consteval-gradle-plugin" />
+            <option value="$PROJECT_DIR$/test" />
           </set>
         </option>
       </GradleProjectSettings>

@@ -6,6 +6,6 @@ dependencyResolutionManagement {
 }
 
 includeBuild("build-logic")
-include("consteval-gradle-plugin")
-include("consteval-compiler")
-include("test")
+include(":consteval-gradle-plugin")
+include(":consteval-compiler")
+include(":test")

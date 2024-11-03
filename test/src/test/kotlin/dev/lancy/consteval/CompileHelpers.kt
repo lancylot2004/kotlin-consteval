@@ -1,13 +1,13 @@
 package dev.lancy.consteval
 
-import com.tschuchort.compiletesting.CompilationResult
+import com.tschuchort.compiletesting.JvmCompilationResult
 import com.tschuchort.compiletesting.KotlinCompilation
 import com.tschuchort.compiletesting.SourceFile
 import org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi
 import java.io.File
 
 @OptIn(ExperimentalCompilerApi::class)
-fun compile(sourceFiles: List<SourceFile>, verbose: Boolean = false): CompilationResult = KotlinCompilation().apply {
+fun compile(sourceFiles: List<SourceFile>, verbose: Boolean = false): JvmCompilationResult = KotlinCompilation().apply {
     sources = sourceFiles
     compilerPluginRegistrars = listOf(ConstevalCompilerPluginRegistrar())
     inheritClassPath = true
@@ -15,7 +15,8 @@ fun compile(sourceFiles: List<SourceFile>, verbose: Boolean = false): Compilatio
 }.compile()
 
 @OptIn(ExperimentalCompilerApi::class)
-fun compile(sourceFile: SourceFile, verbose: Boolean = false): CompilationResult = compile(listOf(sourceFile), verbose)
+fun compile(sourceFile: SourceFile, verbose: Boolean = false): JvmCompilationResult =
+    compile(listOf(sourceFile), verbose)
 
 private object Whatever
 

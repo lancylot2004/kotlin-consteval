@@ -3,14 +3,18 @@ package dev.lancy.consteval
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.ir.IrStatement
+import org.jetbrains.kotlin.ir.backend.js.utils.valueArguments
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.ir.declarations.IrValueParameter
+import org.jetbrains.kotlin.ir.declarations.IrVariable
 import org.jetbrains.kotlin.ir.expressions.IrBody
 import org.jetbrains.kotlin.ir.expressions.IrCall
 import org.jetbrains.kotlin.ir.expressions.IrConst
+import org.jetbrains.kotlin.ir.expressions.IrDeclarationReference
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrReturn
 import org.jetbrains.kotlin.ir.expressions.IrWhen
+import org.jetbrains.kotlin.ir.expressions.IrWhileLoop
 import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.types.isBoolean
@@ -42,7 +46,7 @@ class ConstevalGenerationExtension : IrGenerationExtension, IrElementTransformer
      * @param body The body to evaluate.
      * @return The constant result of evaluation, or null if constant evaluation failed and/or is not possible.
      */
-    private fun evaluateBody(variables: MutableList<IrValueParameter>, body: IrBody): IrConst<*>? {
+    private fun evaluateBody(variables: MutableMap<String, IrConst<*>>, body: IrBody): IrConst<*>? {
         for (statement in body.statements) {
             val result = evaluateStatement(variables, statement)
             result?.let { return it }
@@ -58,7 +62,8 @@ class ConstevalGenerationExtension : IrGenerationExtension, IrElementTransformer
      * @param statement The statement to evaluate.
      * @return The constant result of evaluation, or null if constant evaluation failed and/or is not possible.
      */
-    private fun evaluateStatement(variables: MutableList<IrValueParameter>, statement: IrStatement): IrConst<*>? {
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun evaluateStatement(variables: MutableMap<String, IrConst<*>>, statement: IrStatement): IrConst<*>? {
         return when (statement) {
             is IrReturn -> evaluateStatement(variables, statement.value)
             is IrConst<*> -> statement
@@ -69,6 +74,27 @@ class ConstevalGenerationExtension : IrGenerationExtension, IrElementTransformer
                     if (condition is IrConst<*> && condition.value == true) {
                         return evaluateStatement(variables, branch.result)
                     }
+                }; null
+            }
+            is IrVariable -> {
+                val value = statement.initializer?.let { evaluateStatement(variables, it) } ?: return null
+                variables[statement.name.identifier] = value
+                null
+            }
+
+            is IrDeclarationReference -> when (statement.symbol.owner) {
+                is IrValueParameter -> variables[(statement.symbol.owner as IrValueParameter).name.identifier] as IrConst<*>
+                else -> null
+            }
+
+            is IrValueParameter -> variables[statement.name.identifier] as IrConst<*>
+            is IrWhileLoop -> {
+                val whileLoop = statement.body ?: return null
+
+                while (true) {
+                    val condition = evaluateStatement(variables, statement.condition)
+                    if (condition is IrConst<*> && condition.value == false) break
+                    evaluateStatement(variables, whileLoop)
                 }; null
             }
 
@@ -97,7 +123,14 @@ class ConstevalGenerationExtension : IrGenerationExtension, IrElementTransformer
         if (!isSupportedType(function.returnType)) return null
 
         // Having body == null probably means an abstract, expect, or some such function. We do not support these.
-        val subVariables = function.valueParameters.toMutableList()
+        val subVariables: MutableMap<String, IrConst<*>> = function.valueParameters
+            .zip(expression.valueArguments)
+            .map { (parameter, argument) ->
+                parameter.name.identifier to argument?.let { evaluateStatement(mutableMapOf(), it) }
+            }
+            .filter { (_, value) -> value != null }
+            .associate { (key, value) -> key to value!! }
+            .toMutableMap()
         val result = function.body?.let { evaluateBody(subVariables, it) }
         return result
     }

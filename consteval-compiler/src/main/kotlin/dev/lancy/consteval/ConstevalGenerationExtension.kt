@@ -10,6 +10,8 @@ import org.jetbrains.kotlin.ir.expressions.IrCall
 import org.jetbrains.kotlin.ir.expressions.IrConst
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrReturn
+import org.jetbrains.kotlin.ir.expressions.IrWhen
+import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.types.isBoolean
 import org.jetbrains.kotlin.ir.types.isInt
@@ -60,6 +62,15 @@ class ConstevalGenerationExtension : IrGenerationExtension, IrElementTransformer
         return when (statement) {
             is IrReturn -> evaluateStatement(variables, statement.value)
             is IrConst<*> -> statement
+            is IrCall -> evaluateCall(statement)
+            is IrWhen -> {
+                for (branch in statement.branches) {
+                    val condition = evaluateStatement(variables, branch.condition)
+                    if (condition is IrConst<*> && condition.value == true) {
+                        return evaluateStatement(variables, branch.result)
+                    }
+                }; null
+            }
 
             // Otherwise, the statement is not supported.
             else -> null
@@ -72,6 +83,7 @@ class ConstevalGenerationExtension : IrGenerationExtension, IrElementTransformer
      * @param expression The call expression to evaluate.
      * @return The constant result of evaluation, or null if constant evaluation failed and/or is not possible.
      */
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
     private fun evaluateCall(expression: IrCall): IrConst<*>? {
         val function = expression.symbol.owner
 
@@ -86,7 +98,8 @@ class ConstevalGenerationExtension : IrGenerationExtension, IrElementTransformer
 
         // Having body == null probably means an abstract, expect, or some such function. We do not support these.
         val subVariables = function.valueParameters.toMutableList()
-        return function.body?.let { evaluateBody(subVariables, it) }
+        val result = function.body?.let { evaluateBody(subVariables, it) }
+        return result
     }
 
     /**
